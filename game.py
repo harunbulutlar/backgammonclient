@@ -26,8 +26,11 @@ empty_columns = 1
 checker_length = piece_radius * 2
 column_size = max_piece_in_column * 2 + empty_rows
 row_size = column_count + empty_columns
-screen_width = 975
-screen_height = 825
+board_width = 975
+board_height = 825
+panel_offset = 70
+screen_width = board_width
+screen_height = board_height + panel_offset * 2
 
 initial_setup = {1: (WHITE, 2), 6: (BLACK, 5),
                  8: (BLACK, 3), 12: (WHITE, 5),
@@ -187,7 +190,7 @@ class Mouse():
 
 
 def collide_point(block_list, mouse_point):
-    result = [s for s in checkers_list if s and s.rect.collidepoint(mouse_point)]
+    result = [s for s in checkers_list if s and s.rect.collidepoint((mouse_point[0],mouse_point[1] -70))]
     if result:
         return result[0]
 
@@ -197,8 +200,10 @@ def collide_point(block_list, mouse_point):
 pygame.init()
 
 screen = pygame.display.set_mode([screen_width, screen_height])
+screen.fill((78,73,93))
 text_font = pygame.font.SysFont("monospace", font_size)
-
+board_image = pygame.image.load('Boardmedium.png').convert()
+board_surface = screen.subsurface((0,panel_offset,board_width,board_height)) # A sky surface
 piece_list = pygame.sprite.Group()
 checkers_list = pygame.sprite.Group()
 checkers_dict = {}
@@ -225,7 +230,7 @@ done = False
 
 # Used to manage how fast the screen updates
 clock = pygame.time.Clock()
-
+playtime = 0
 # -------- Main Program Loop -----------
 while not done:
     for event in pygame.event.get():
@@ -235,9 +240,14 @@ while not done:
         elif event.type == pygame.MOUSEBUTTONDOWN:
             pos = pygame.mouse.get_pos()
             checker = collide_point(checkers_list, pygame.mouse.get_pos())
-            one_high_up =(checker.gammon_pos[0],checker.gammon_pos[1] + 1)
-            if one_high_up not in checkers_dict or len(checkers_dict[one_high_up].pieces) == 0:
-                mouse.carry_checker = checker
+
+            print 'here - 1'
+            if checker and len(checker.pieces) > 0:
+                print 'here 3'
+                one_high_up =(checker.gammon_pos[0],checker.gammon_pos[1] + 1)
+                if one_high_up not in checkers_dict or len(checkers_dict[one_high_up].pieces) == 0:
+                    print 'here 2'
+                    mouse.carry_checker = checker
 
         elif event.type == pygame.MOUSEBUTTONUP:
             if mouse.carry_checker:
@@ -260,20 +270,24 @@ while not done:
                             mouse.carry_checker = None
                             break
 
+
     piece_list.update()
     mouse.update()
-    # Clear the screen
-    screen.fill((255, 255, 130))
-    board_image = pygame.image.load('Boardmedium.png')
-    screen.blit(board_image, (0, 0))
+    asd = board_surface.get_abs_offset()
+    board_surface.blit(board_image,(0,0))
+    piece_list.draw(board_surface)
+    # checkers_list.draw(board_surface)
+    # screen.blit(board_surface,(0,panel_offset))
     # for debugging
-    piece_list.draw(screen)
-    checkers_list.draw(screen)
+
+
 
     # Limit to 60 frames per second
-    clock.tick(60)
-
+    milisec = clock.tick(60)
+    playtime += milisec / 1000.0
     # Go ahead and update the screen with what we've drawn.
     pygame.display.flip()
+    # print"FPS: {:6.3}{}PLAYTIME: {:6.3} SECONDS".format(
+    #                        clock.get_fps(), " "*5, playtime)
 
 pygame.quit()

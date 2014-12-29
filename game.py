@@ -10,12 +10,15 @@ Explanation video: http://youtu.be/iwLj7iJCFQM
 """
 import pygame
 import random
+import Buttons
 
 # Define some colors
 BLACK = (0, 0, 0)
 WHITE = (255, 255, 255)
 RED = (255, 0, 0)
-font_size = 15
+LABEL = (250, 104, 0)
+COLOR_KEY = (255, 255, 254)
+font_size = 25
 column_count = 12
 column_count_finish = 12 * 2
 piece_radius = 37.5
@@ -38,14 +41,35 @@ initial_setup = {1: (WHITE, 2), 6: (BLACK, 5),
                  19: (WHITE, 5), 24: (BLACK, 2)}
 
 
+class Checkers(pygame.sprite.Group):
+    def __init__(self, *sprites):
+        pygame.sprite.Group.__init__(self, *sprites)
+        self.checker_dict = {}
+
+    def add_checker(self, key, checker):
+        self.add(checker)
+        self.checker_dict[key] = checker
+
+    def checker_is_empty(self, key):
+        if key not in self.checker_dict or self.checker_dict[key].is_empty:
+            return True
+        else:
+            return False
+
+    def get_checker(self, key):
+        if key in self.checker_dict:
+            return self.checker_dict[key]
+
+
 class BaseSprite(pygame.sprite.Sprite):
-    def __init__(self, position, length):
-        pygame.sprite.Sprite.__init__(self)
+    def __init__(self, surface, position, length):
+        super(BaseSprite, self).__init__()
         self.position = position
         self.length = length
         self.image = pygame.Surface((length, length))
-        self.image.fill((255, 255, 130))
-        self.image.set_colorkey((255, 255, 130))
+        self.image.fill(COLOR_KEY)
+        self.image.set_colorkey(COLOR_KEY)
+        self.surface = surface
 
         self.rect = self.image.get_rect()
         self.previous_rect = self.image.get_rect()
@@ -81,10 +105,18 @@ class BaseSprite(pygame.sprite.Sprite):
     def log(self):
         return str(self.position[0]) + ',' + str(self.position[1])
 
+    @property
+    def abs_rect(self):
+        abs_pos = self.surface.get_abs_offset()
+        copy_rect = self.image.get_rect().copy()
+        copy_rect.x = abs_pos[0] + self.rect.x
+        copy_rect.y = abs_pos[1] + self.rect.y
+        return copy_rect
+
 
 class Piece(BaseSprite):
-    def __init__(self, color, position, radius):
-        BaseSprite.__init__(self, position, radius * 2)
+    def __init__(self, surface, color, position, radius):
+        BaseSprite.__init__(self, surface, position, radius * 2)
         self.radius = radius
         self.color = color
         self.draw_piece()
@@ -94,10 +126,10 @@ class Piece(BaseSprite):
 
 
 class Checker(BaseSprite):
-    def __init__(self, position, length):
-        BaseSprite.__init__(self, position, length)
+    def __init__(self, surface, position, length):
+        BaseSprite.__init__(self, surface, position, length)
         self.gammon_pos = (-1, -1)
-        self.pieces = []
+        self._pieces = []
         empty_column_start_top = column_count + column_count / 2
         empty_column_finish_top = empty_column_start_top + empty_columns + 1
         empty_column_start_bottom = column_count - column_count / 2 + 1
@@ -122,7 +154,7 @@ class Checker(BaseSprite):
             self.gammon_pos = (self.position[0] + column_count + 1, - self.position[1])
         print 'normal ' + self.log()
         print 'gammon ' + self.gammon_log()
-        self.show_block()
+        # self.show_block()
 
     def show_block(self):
         self.image.fill((random.randint(0, 255), random.randint(0, 255), random.randint(0, 255)))
@@ -131,27 +163,47 @@ class Checker(BaseSprite):
         self.image.blit(label_pos, (0, 0))
         self.image.blit(label_gammon, (0, self.length - font_size))
 
-    def add_piece(self, my_piece):
-        self.pieces.append(my_piece)
-        my_piece.set_all_pos(self.rect)
-        my_piece.label = len(self.pieces)
 
-        if len(self.pieces) > 1:
-            self.image.fill((255, 255, 130))
-            self.paint_label(len(self.pieces))
+    @property
+    def piece(self):
+        if self._pieces:
+            return self._pieces[-1]
         else:
-            self.image.fill((255, 255, 130))
+            return None
 
-    def paint_label(self, label):
-        label_pos = text_font.render(str(label), 1, WHITE)
-        self.image.blit(label_pos, (self.length / 2 - font_size / 3, self.length / 2 - font_size / 2))
+    @piece.setter
+    def piece(self, my_piece):
+        self._pieces.append(my_piece)
+        my_piece.set_all_pos(self.rect)
+        my_piece.label = len(self._pieces)
+        self.paint_label()
 
-    def get_piece(self):
-        if self.pieces:
-            return self.pieces[-1]
+    def paint_label(self):
+        self.image.fill(COLOR_KEY)
+        label = len(self._pieces)
+        if label > 1:
+            label_pos = text_font.render(str(label), 1, LABEL)
+            self.image.blit(label_pos, (self.length / 2 - font_size / 3, self.length / 2 - font_size / 2))
 
     def pop_piece(self):
-        return self.pieces.pop()
+        popped_piece = self._pieces.pop()
+        self.paint_label()
+        return popped_piece
+
+        return
+    @property
+    def is_reserved(self):
+        return self.gammon_pos[1] < 0 or self.gammon_pos[0] < 0
+
+    @property
+    def is_empty(self):
+        if not self._pieces or len(self._pieces) == 0:
+            return True
+        else:
+            return False
+    @property
+    def next_gmy_pos(self):
+        return self.gammon_pos[0], self.gammon_pos[1] + 1
 
     def gammon_log(self):
         return str(self.gammon_pos[0]) + ',' + str(self.gammon_pos[1])
@@ -161,12 +213,12 @@ class Mouse():
     """ This class represents the player. It derives from block and thus gets the same
     ___init___ method we defined above. """
     carry_block_list = []
+
     # List of all the blocks we are carrying
 
     def __init__(self):
         self.pos = pygame.mouse.get_pos()
         self.carry_checker = None
-
     def update(self):
         """ Method called when updating a sprite. """
 
@@ -182,49 +234,100 @@ class Mouse():
         # Loop through each block that we are carrying and adjust
         # it by the amount we moved.
         if self.carry_checker:
-            self.carry_checker.get_piece().rect.x -= diff_x
-            self.carry_checker.get_piece().rect.y -= diff_y
+            self.carry_checker.piece.rect.x -= diff_x
+            self.carry_checker.piece.rect.y -= diff_y
 
         # Now wet the player object to the mouse location
         self.pos = current_pos
 
+    @staticmethod
+    def find_under_cursor(input_list):
+        result = [s for s in input_list if s and s.abs_rect.collidepoint(pygame.mouse.get_pos())]
+        if result:
+            return result[0]
+        return None
 
-def collide_point(block_list, mouse_point):
-    result = [s for s in checkers_list if s and s.rect.collidepoint((mouse_point[0],mouse_point[1] -70))]
-    if result:
-        return result[0]
+    @staticmethod
+    def get_abs_rect(surface):
+        abs_pos = surface.get_abs_offset()
+        copy_rect = surface.get_rect().copy()
+        copy_rect.x = abs_pos[0] + copy_rect.x
+        copy_rect.y = abs_pos[1] + copy_rect.y
+        return copy_rect
 
-    return None
+    def mouse_down_cb(self):
+        hit_checker = mouse.find_under_cursor(checkers)
+        if not hit_checker:
+            return
+        if not hit_checker.is_empty:
+            next_pos = hit_checker.next_gmy_pos
+            if checkers.checker_is_empty(next_pos):
+                self.carry_checker = hit_checker
 
-# Initialize Pygame
+    def mouse_up_cb(self):
+        hit_checker = mouse.find_under_cursor(checkers)
+        if not hit_checker:
+            return
+        if self.carry_checker and hit_checker.is_reserved:
+                self.carry_checker.piece.prev_pos_to_current()
+                self.carry_checker = None
+        elif self.carry_checker:
+            for i in range(0, max_piece_in_column):
+                candidate_checker = checkers.get_checker((hit_checker.gammon_pos[0], i))
+                if candidate_checker.piece == self.carry_checker.piece:
+                    self.carry_checker.piece.prev_pos_to_current()
+                    mouse.carry_checker = None
+                    break
+                elif i == max_piece_in_column - 1 or candidate_checker.is_empty:
+                    candidate_checker.piece = self.carry_checker.piece
+                    mouse.carry_checker.pop_piece()
+                    mouse.carry_checker = None
+                    break
+
+    def process_mouse_event(self, in_event, in_surface, events_dict):
+        abs_rec = self.get_abs_rect(in_surface)
+        if in_event == pygame.QUIT:
+            return True
+        if abs_rec.collidepoint(pygame.mouse.get_pos()):
+            if in_event in events_dict:
+                print 'hereeee'
+                events_dict[in_event]()
+
+
+
 pygame.init()
-
 screen = pygame.display.set_mode([screen_width, screen_height])
-screen.fill((78,73,93))
-text_font = pygame.font.SysFont("monospace", font_size)
+screen.fill((78, 73, 93))
+text_font = pygame.font.SysFont("tahoma", font_size)
 board_image = pygame.image.load('Boardmedium.png').convert()
-board_surface = screen.subsurface((0,panel_offset,board_width,board_height)) # A sky surface
+board_surface = screen.subsurface((0, panel_offset, board_width, board_height))
+
+button_surface = screen.subsurface((0, board_height + panel_offset, board_width, panel_offset))
+
 piece_list = pygame.sprite.Group()
-checkers_list = pygame.sprite.Group()
-checkers_dict = {}
+checkers = Checkers()
+debug_list = pygame.sprite.Group()
 for x in range(0, row_size):
     for y in range(0, column_size):
-        checker = Checker([x, y], checker_length)
-        checkers_list.add(checker)
-        checkers_dict[checker.gammon_pos] = checker
+        new_checker = Checker(board_surface, [x, y], checker_length)
+        checkers.add_checker(new_checker.gammon_pos, new_checker)
 
 for column, row_and_color in initial_setup.iteritems():
-# This represents a block
     for number in range(0, row_and_color[1]):
         print 'point: ' + str(column) + ' number:' + str(number)
-        checker = checkers_dict[(column, number)]
-        if checker:
-            print checker.log()
-            piece = Piece(row_and_color[0], checker.position, piece_radius)
-            checker.add_piece(piece)
-            piece_list.add(piece)
+        created_checker = checkers.get_checker((column, number))
+        if created_checker:
+            print created_checker.log()
+            created_checker.piece = Piece(board_surface, row_and_color[0], created_checker.position, piece_radius)
+            piece_list.add(created_checker.piece)
 
 mouse = Mouse()
+
+move_button = Buttons.Button()
+move_button.create_button(button_surface, (107,142,35), 0, 0, 100, 50, 0, "Move", (255, 255, 255))
+wrong_move_button = Buttons.Button()
+wrong_move_button.create_button(button_surface, (107,142,35), 0, 0, 100, 50, 0, "Move", (255, 255, 255))
+board_events = {pygame.MOUSEBUTTONUP: mouse.mouse_up_cb, pygame.MOUSEBUTTONDOWN: mouse.mouse_down_cb}
 # Loop until the user clicks the close button.
 done = False
 
@@ -234,57 +337,16 @@ playtime = 0
 # -------- Main Program Loop -----------
 while not done:
     for event in pygame.event.get():
-        if event.type == pygame.QUIT:
-            done = True
-
-        elif event.type == pygame.MOUSEBUTTONDOWN:
-            pos = pygame.mouse.get_pos()
-            checker = collide_point(checkers_list, pygame.mouse.get_pos())
-
-            print 'here - 1'
-            if checker and len(checker.pieces) > 0:
-                print 'here 3'
-                one_high_up =(checker.gammon_pos[0],checker.gammon_pos[1] + 1)
-                if one_high_up not in checkers_dict or len(checkers_dict[one_high_up].pieces) == 0:
-                    print 'here 2'
-                    mouse.carry_checker = checker
-
-        elif event.type == pygame.MOUSEBUTTONUP:
-            if mouse.carry_checker:
-                current_piece = mouse.carry_checker.get_piece()
-                hit_checker = collide_point(checkers_list, pygame.mouse.get_pos())
-                if hit_checker and hit_checker.gammon_pos[1] < 0 or hit_checker.gammon_pos[0] < 0:
-                    current_piece.prev_pos_to_current()
-                    mouse.carry_checker = None
-                elif hit_checker:
-                    for i in range(0, max_piece_in_column):
-                        candidate_checker = checkers_dict[(hit_checker.gammon_pos[0], i)]
-
-                        if candidate_checker.get_piece() == mouse.carry_checker.get_piece():
-                            mouse.carry_checker.get_piece().prev_pos_to_current()
-                            mouse.carry_checker = None
-                            break
-                        elif i == max_piece_in_column - 1 or not candidate_checker.pieces:
-                            candidate_checker.add_piece(current_piece)
-                            mouse.carry_checker.pop_piece()
-                            mouse.carry_checker = None
-                            break
-
+        done = mouse.process_mouse_event(event.type, board_surface, board_events)
 
     piece_list.update()
     mouse.update()
-    asd = board_surface.get_abs_offset()
-    board_surface.blit(board_image,(0,0))
+    board_surface.blit(board_image, (0, 0))
+
     piece_list.draw(board_surface)
-    # checkers_list.draw(board_surface)
-    # screen.blit(board_surface,(0,panel_offset))
-    # for debugging
-
-
-
-    # Limit to 60 frames per second
-    milisec = clock.tick(60)
-    playtime += milisec / 1000.0
+    checkers.draw(board_surface)
+    milli_sec = clock.tick(60)
+    playtime += milli_sec / 1000.0
     # Go ahead and update the screen with what we've drawn.
     pygame.display.flip()
     # print"FPS: {:6.3}{}PLAYTIME: {:6.3} SECONDS".format(

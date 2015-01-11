@@ -5,7 +5,7 @@
 #Project startet: d. 26. august 2012
 import pygame
 
-
+DISABLED_COLOR = (192, 192, 192)
 class Button:
     def __init__(self, surface, color, x, y, length, height, width, text, text_color, font_size):
         self.surface = surface
@@ -22,6 +22,7 @@ class Button:
         self.text = text
         self.text_color = text_color
         self.font_size = font_size
+        self.disable = False
 
 
     def draw_button(self):
@@ -60,6 +61,13 @@ class Button:
 
     def mouse_up(self):
         self.current_color = self.color
+
+    def disabled(self, value):
+        if not value :
+            self.current_color = DISABLED_COLOR
+        else:
+            self.current_color = self.color
+        self.disable = value
 
     def color_variant(self, in_color, brightness_offset=1):
         hex_color = '#%02x%02x%02x' % (in_color[0], in_color[1], in_color[2])

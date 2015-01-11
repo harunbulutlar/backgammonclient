@@ -32,11 +32,13 @@ class SurfaceMouseObserver(MouseObserver):
         self.mouse_events = {pygame.MOUSEBUTTONDOWN: self.mouse_down_cb,
                              pygame.MOUSEBUTTONUP: self.mouse_up_cb,
                              pygame.MOUSEMOTION: self.mouse_moved_cb}
+        self.disabled = False
 
     def fire(self, event):
         abs_rec = self.get_abs_rect()
         outside = not abs_rec.collidepoint(pygame.mouse.get_pos())
-        if event in self.mouse_events:
+
+        if not self.disabled and event in self.mouse_events:
             self.mouse_events[event](outside)
 
     def get_abs_rect(self):

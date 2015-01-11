@@ -21,7 +21,7 @@ class Checkers(pygame.sprite.Group):
         self.add(checker)
         self.checker_dict[key] = checker
 
-    def is_top_filled_checker(self, checker):
+    def is_next_empty(self, checker):
         if checker.next_gmy_pos not in self.checker_dict or self.checker_dict[checker.next_gmy_pos].is_empty:
             return True
         else:

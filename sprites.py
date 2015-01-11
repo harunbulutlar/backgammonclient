@@ -28,8 +28,14 @@ class Checkers(pygame.sprite.Group):
             return False
 
     def get_checker(self, key):
+        if isinstance(key, list):
+            key = tuple(key)
         if key in self.checker_dict:
             return self.checker_dict[key]
+
+    def clear_checkers(self):
+        for key, checker in self.checker_dict.iteritems():
+           checker.clear_pieces()
 
 
 class BaseSprite(pygame.sprite.Sprite):
@@ -89,7 +95,10 @@ class Piece(BaseSprite):
     def __init__(self, surface, color, position, radius):
         BaseSprite.__init__(self, surface, position, radius * 2)
         self.radius = radius
-        self.color = color
+        if isinstance(color, str) or isinstance(color, unicode) and color == 'WHITE':
+            self.color = constants.WHITE
+        else:
+            self.color = constants.BLACK
         self.draw_piece()
 
     def draw_piece(self):
@@ -162,6 +171,8 @@ class Checker(BaseSprite):
         self.paint_label()
         return popped_piece
 
+    def clear_pieces(self):
+        del self._pieces[:]
     @property
     def is_reserved(self):
         return self.gammon_pos[1] < 0 or self.gammon_pos[0] < 0

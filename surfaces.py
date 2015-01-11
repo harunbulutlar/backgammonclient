@@ -6,6 +6,8 @@ import constants
 import sprites
 import Buttons
 import messages
+import Queue
+import copy
 from mouseevents import SurfaceMouseObserver, find_under_cursor
 
 BUTTON_COLOR = (31, 150, 166)
@@ -17,37 +19,55 @@ empty_btw_buttons = 120
 
 
 class InfoHolder(SurfaceMouseObserver):
-    def __init__(self, surface, color, name, opponent_name, dice):
-        SurfaceMouseObserver.__init__(self, surface)
+    def __init__(self, surface, game_accessor, color, name, opponent_name):
+        SurfaceMouseObserver.__init__(self, surface, game_accessor)
         self.text_font = pygame.font.SysFont("tahoma", constants.font_size)
         self.color = color
-        self.dice = dice
         self.opponent_name = opponent_name
         self.name = name
-        self.label_name = self.text_font.render('You: ' + name, 1, constants.WHITE)
-        self.label_opponent_name = self.text_font.render('Opponent: ' + opponent_name, 1, constants.WHITE)
-        self.surface.blit(self.label_name, (0, 0))
-        self.surface.blit(self.label_opponent_name, (0, constants.font_size + 5))
+        self.you_txt = 'You: ' + name
+        self.opponent_txt = 'Opponent: ' + opponent_name
+        self.turn = '<-- Playing'
+
+    def update(self):
+        opponent_txt = self.opponent_txt
+        you_txt = self.you_txt
+        if self.game_accessor.playing:
+            you_txt = self.you_txt + self.turn
+        else:
+            opponent_txt = self.opponent_txt + self.turn
+
+        self.surface.fill(self.color)
+        rendered_you = self.text_font.render(you_txt, 1, constants.WHITE)
+        rendered_opponent = self.text_font.render(opponent_txt, 1, constants.WHITE)
+        rendered_dice = self.text_font.render(str(self.game_accessor.dice), 1, constants.WHITE)
+        self.surface.blit(rendered_you, (0, 0))
+        self.surface.blit(rendered_opponent, (0, constants.font_size + 5))
+        self.surface.blit(rendered_dice, (constants.screen_width/2 - 10, constants.font_size + 5))
 
 
 class ButtonHolder(SurfaceMouseObserver):
-    def __init__(self, surface, color, board):
-        SurfaceMouseObserver.__init__(self, surface)
+    def __init__(self, surface, game_accessor, color, board):
+        SurfaceMouseObserver.__init__(self, surface, game_accessor)
         self.color = color
         self.board = board
         move_x = (constants.screen_width - button_length) / 2 - empty_btw_buttons
         move_y = (constants.panel_offset - button_height) / 2
-        move_button = Buttons.Button(surface, BUTTON_COLOR, move_x, move_y, button_length, button_height, 10, "Move",
-                                     BUTTON_TEXT_COLOR, font_size)
+        self.move_button = Buttons.Button(surface, BUTTON_COLOR, move_x, move_y, button_length, button_height, 10,
+                                          "Move",
+                                          BUTTON_TEXT_COLOR, font_size)
 
         w_move_x = constants.screen_width / 2 - button_length / 2 + empty_btw_buttons
-        wrong_move_button = Buttons.Button(surface, BUTTON_COLOR, w_move_x, move_y, button_length, button_height, 10,
-                                           "Wrong Move", BUTTON_TEXT_COLOR, font_size)
-        undo_button = Buttons.Button(surface, BUTTON_COLOR, 5, move_y, button_length, button_height, 10,
-                                     "Undo Move", BUTTON_TEXT_COLOR, font_size)
+        self.wrong_move_button = Buttons.Button(surface, BUTTON_COLOR, w_move_x, move_y, button_length, button_height,
+                                                10,
+                                                "Wrong Move", BUTTON_TEXT_COLOR, font_size)
+        self.undo_button = Buttons.Button(surface, BUTTON_COLOR, 5, move_y, button_length, button_height, 10,
+                                          "Undo Move", BUTTON_TEXT_COLOR, font_size)
 
-        self.buttons = [move_button, wrong_move_button, undo_button]
-        self.draw()
+        self.buttons = [self.move_button, self.wrong_move_button, self.undo_button]
+        self.click_dictionary = {self.move_button: self.move_button_clicked,
+                                 self.undo_button: self.undo_button_clicked,
+                                 self.wrong_move_button: self.wrong_move_button_clicked}
         self.active_button = None
 
     def mouse_moved_cb(self, outside):
@@ -55,50 +75,61 @@ class ButtonHolder(SurfaceMouseObserver):
         if button:
             self.active_button = button
             button.mouse_in()
-            self.draw()
         elif self.active_button:
             self.active_button.mouse_out()
             self.active_button = None
-            self.draw()
+
+    def update(self):
+        if not self.get_disabled():
+            self.undo_button.set_disabled(not self.board.has_move())
+            self.move_button.set_disabled(False)
+            self.wrong_move_button.set_disabled(False)
+        else:
+            self.set_disabled(True)
+        self.draw()
 
     def mouse_down_cb(self, outside):
-
         if outside:
             return
         if self.active_button:
             self.active_button.mouse_down()
-            self.draw()
 
     def mouse_up_cb(self, outside):
         if outside:
             return
         if self.active_button:
             self.active_button.mouse_up()
-            self.draw()
-            self.button_clicked(self.active_button)
+            self.click_dictionary[self.active_button]()
 
+    def undo_button_clicked(self):
+        self.board.undo_move()
+        pass
 
-    def button_clicked(self, button):
-        message_to_send = None
-        if button.text == "Undo Move":
-            self.board.undo_move()
-        elif button.text == "Move":
-            message_to_send = messages.MOVE()
-            message_to_send.body.move = self.board.move
-        elif button.text == "Wrong Move":
-            message_to_send = messages.WRONGMOVE()
-        self.board.message_to_send = message_to_send
+    def move_button_clicked(self):
+        message_to_send = messages.MOVE()
+        message_to_send.body.move = copy.deepcopy(self.board.move)
+        self.game_accessor.send_message = message_to_send
+        self.board.clear_saved_move()
 
+    def wrong_move_button_clicked(self):
+        message_to_send = messages.WRONGMOVE()
+        self.game_accessor.send_message = message_to_send
+        self.game_accessor.wrong_move_pushed = True
 
     def draw(self):
         self.surface.fill(self.color)
         for button in self.buttons:
             button.draw_button()
 
+    def set_disabled(self, value):
+        for button in self.buttons:
+                if button.get_disabled() is not value:
+                    button.set_disabled(value)
+
 
 class Board(SurfaceMouseObserver):
-    def __init__(self, surface, color):
-        SurfaceMouseObserver.__init__(self, surface)
+    def __init__(self, surface, game_accessor, color):
+        SurfaceMouseObserver.__init__(self, surface, game_accessor)
         self.surface = surface
         self.checkers = sprites.Checkers(constants.column_size, constants.row_size)
         self.checkers.create_checkers(surface, constants.checker_length)
@@ -108,30 +139,42 @@ class Board(SurfaceMouseObserver):
         self.previous_checker = None
         self.color = color
         self.move = []
-        self.move_animation = None
+        self.move_animations = Queue.Queue()
+        self.current_animation = MoveAnimation(None, None)
         self.message_to_send = None
 
     def update(self):
-        if self.move_animation:
-            if self.move_animation.finished:
-                self.move_animation = None
-                self.disabled = False
-            else:
-                self.move_animation.move()
+        if self.animating():
+            self.game_accessor.animating = True
+            self.current_animation.move()
+        else:
+            self.game_accessor.animating = False
 
         self.surface.blit(self.image, (0, 0))
         self.pieces.update()
         self.pieces.draw(self.surface)
         self.checkers.draw(self.surface)
 
+    def animating(self):
+        if self.current_animation.finished:
+            if not self.move_animations.empty():
+                self.current_animation = self.move_animations.get_nowait()
+                return self.animating()
+            return False
+        return True
+
     def setup_pieces(self, setup):
         self.pieces = pygame.sprite.Group()
+        self.checkers.clear_checkers()
         for column, row_and_color in setup.iteritems():
-            for number in range(0, row_and_color[1]):
+            if row_and_color[0] == 'EMPTY':
+                continue
+            for number in range(0, int(row_and_color[1])):
                 print 'point: ' + str(column) + ' number:' + str(number)
-                created_checker = self.checkers.get_checker((column, number))
+                created_checker = self.checkers.get_checker((int(column), number))
                 if created_checker:
                     print created_checker.log()
+
                     created_checker.piece = sprites.Piece(self.surface, row_and_color[0],
                                                           created_checker.position,
                                                           constants.piece_radius)
@@ -208,25 +251,35 @@ class Board(SurfaceMouseObserver):
 
     def save_move(self, final_checker):
         self.move.append((self.previous_checker.gammon_pos, final_checker.gammon_pos))
-        self.disabled = True if len(self.move) == 2 else False
+        self.set_board_disable()
+
+    def clear_saved_move(self):
+        if self.has_move():
+            del self.move[:]
+        self.set_board_disable()
+
+    def set_board_disable(self):
+        self.set_disabled(True if len(self.move) == 2 else False)
+
+    def has_move(self):
+        return len(self.move) > 0
 
     def undo_move(self):
-        if len(self.move) > 0:
+        if self.has_move():
             gammon_pos = self.move.pop()
-            moved_to_checker = self.checkers.get_checker(gammon_pos[1])
-            moved_from_checker = self.checkers.get_checker(gammon_pos[0])
-            if not moved_to_checker.is_empty:
-                piece = moved_to_checker.pop_piece()
-                self.disabled = True
-                self.move_animation = MoveAnimation(moved_to_checker, moved_from_checker, piece)
+            self.set_board_disable()
+            self.register_move_animation(gammon_pos[1], gammon_pos[0])
 
     def opponent_move(self, move_message):
-        moved_from_checker = self.checkers.get_checker(move_message[0])
-        moved_to_checker = self.checkers.get_checker(move_message[1])
-        if not moved_to_checker.is_empty:
-            piece = moved_to_checker.pop_piece()
-            self.disabled = True
-            self.move_animation = MoveAnimation(moved_from_checker, moved_to_checker, piece)
+        self.register_move_animation(move_message[0][0], move_message[0][1])
+        self.register_move_animation(move_message[1][0], move_message[1][1])
+
+    def register_move_animation(self, moved_from_pos, moved_to_pos):
+        moved_from_checker = self.checkers.get_checker(moved_from_pos)
+        moved_to_checker = self.checkers.get_checker(moved_to_pos)
+        animation = MoveAnimation(moved_from_checker, moved_to_checker)
+        animation.init()
+        self.move_animations.put(animation)
 
     def add_broken_piece_holder(self, piece):
         if piece.color is constants.WHITE:
@@ -240,16 +293,19 @@ class Board(SurfaceMouseObserver):
 
 
 class MoveAnimation():
-    def __init__(self, moved_from, moved_to, piece):
+    def __init__(self, moved_from=None, moved_to=None):
         self.moved_from = moved_from
         self.moved_to = moved_to
+        self.line = None
+        self.piece = None
+        self.finished = True
+        self.speed = 10
+
+    def init(self):
+        self.finished = False
         self.line = Line(
             ((self.moved_from.rect.x, self.moved_from.rect.y), (self.moved_to.rect.x, self.moved_to.rect.y)))
-        self.move_from_position = self.moved_from.rect
-        self.move_to_position = self.moved_to.rect
-        self.piece = piece
-        self.finished = False
-        self.speed = 10
+
         if self.line.slope is None:
             if self.moved_to.rect.y - self.moved_from.rect.y > 0:
                 self.speed *= -1
@@ -258,6 +314,8 @@ class MoveAnimation():
                 self.speed *= -1
 
     def move(self):
+        if not self.moved_from.is_empty:
+            self.piece = self.moved_from.pop_piece()
         self.finished = self.moved_to.rect.colliderect(self.piece.rect)
         if self.finished:
             self.piece.rect.x = self.moved_to.rect.x

@@ -27,13 +27,9 @@ class ClientConnector():
     def finding_fallback(self):
         timeout = self.connection.socket.gettimeout()
         self.connection.socket.settimeout(0.0)
-        try:
-            self.received_msg = self.connection.receive_msg()
-        except socket.error, e:
-            pass
-            # if e.args[0] == errno.EWOULDBLOCK:
+        self.received_msg = self.receive_message()[1]
         self.connection.socket.settimeout(timeout)
-        if not self.received_msg:
+        if self.received_msg is None:
             return False
         return True
 
@@ -47,7 +43,7 @@ class ClientConnector():
 
             find_match = messages.FINDMATCH()
             find_match.body.mode = 'match'
-            self.connection.send_message(find_match)
+            self.send_message(find_match)
             self.finding_dialog.show()
             if self.received_msg:
                 if isinstance(self.received_msg, messages.RSPFIRST) or \
@@ -65,16 +61,32 @@ class ClientConnector():
             return username
         connect_message = messages.CONNECT()
         connect_message.body.username = username
-        try:
-            self.connection.send_message(connect_message)
+        if self.send_message(connect_message):
             response_message = self.connection.receive_msg()
             if not isinstance(response_message, messages.RSPOK):
                 username = None
-        except Exception, e:
-            print'something\'s wrong with %s:%d. Exception type is %s' % (
-                self.connection.host, self.connection.port, repr(e))
-            return None
-
         return username
 
+    def send_message(self, message):
+        try:
+            self.connection.send_message(message)
+        except Exception, e:
+            if e.args[0] != errno.EWOULDBLOCK:
+                print'something\'s wrong with %s:%d. Exception type is %s' % (
+                    self.connection.host, self.connection.port, repr(e))
+                return errno.EWOULDBLOCK
+            return False
+        return True
+
+    def receive_message(self):
+        try:
+            message = self.connection.receive_msg()
+        except Exception, e:
+            if e.args[0] != errno.EWOULDBLOCK:
+                print'something\'s wrong with %s:%d. Exception type is %s' % (
+                    self.connection.host, self.connection.port, repr(e))
+                return False,None
+            return True, None
+
+        return True,message
 

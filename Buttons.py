@@ -4,8 +4,11 @@
 #Buttons
 #Project startet: d. 26. august 2012
 import pygame
+import uuid
 
 DISABLED_COLOR = (192, 192, 192)
+
+
 class Button:
     def __init__(self, surface, color, x, y, length, height, width, text, text_color, font_size):
         self.surface = surface
@@ -16,14 +19,24 @@ class Button:
         self.hovered_color = self.color_variant(color, 15)
         self.x = x
         self.y = y
+        self.guid = uuid.uuid1()
         self.length = length
         self. height = height
         self.width = width
         self.text = text
         self.text_color = text_color
         self.font_size = font_size
-        self.disable = False
+        self.__disabled = False
 
+    def get_disabled(self):
+        return self.__disabled
+
+    def set_disabled(self, value):
+        if value:
+            self.current_color = DISABLED_COLOR
+        else:
+            self.current_color = self.color
+        self.__disabled = value
 
     def draw_button(self):
         for i in range(1, 10):
@@ -62,13 +75,6 @@ class Button:
     def mouse_up(self):
         self.current_color = self.color
 
-    def disabled(self, value):
-        if not value :
-            self.current_color = DISABLED_COLOR
-        else:
-            self.current_color = self.color
-        self.disable = value
-
     def color_variant(self, in_color, brightness_offset=1):
         hex_color = '#%02x%02x%02x' % (in_color[0], in_color[1], in_color[2])
         """ takes a color like #87c95f and produces a lighter or darker variant """
@@ -87,4 +93,9 @@ class Button:
         lv = len(value)
         return tuple(int(value[i:i + lv // 3], 16) for i in range(0, lv, lv // 3))
 
+    def __eq__(self, another):
+        return hasattr(another, 'guid') and self.guid == another.guid
+
+    def __hash__(self):
+        return hash(self.guid)
 

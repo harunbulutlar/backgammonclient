@@ -23,7 +23,8 @@ panel_offset = 70
 screen_width = board_width
 screen_height = board_height + panel_offset * 2
 
-initial_setup = {1: (WHITE, 2), 6: (BLACK, 5),
-                 8: (BLACK, 3), 12: (WHITE, 5),
-                 13: (BLACK, 5), 17: (WHITE, 3),
-                 19: (WHITE, 5), 24: (BLACK, 1)}
+initial_setup = {'1': ('WHITE', '2'), '6': ('BLACK', '5'),
+                 '3': ('EMPTY', '2'), '4': ('EMPTY', '5'),
+                 '8': ('BLACK', '3'), '12': ('WHITE', '5'),
+                 '13': ('BLACK', '5'), '17': ('WHITE', '3'),
+                 '19': ('WHITE', '5'), '24': ('BLACK', '1')}

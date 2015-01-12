@@ -8,6 +8,7 @@ import Buttons
 import messages
 import Queue
 import copy
+import math
 from mouseevents import SurfaceMouseObserver, find_under_cursor
 
 BUTTON_COLOR = (31, 150, 166)
@@ -43,7 +44,7 @@ class InfoHolder(SurfaceMouseObserver):
         rendered_dice = self.text_font.render(str(self.game_accessor.dice), 1, constants.WHITE)
         self.surface.blit(rendered_you, (0, 0))
         self.surface.blit(rendered_opponent, (0, constants.font_size + 5))
-        self.surface.blit(rendered_dice, (constants.screen_width/2 - 10, constants.font_size + 5))
+        self.surface.blit(rendered_dice, (constants.screen_width / 2 - 10, constants.font_size + 5))
 
 
 class ButtonHolder(SurfaceMouseObserver):
@@ -82,7 +83,7 @@ class ButtonHolder(SurfaceMouseObserver):
     def update(self):
         if not self.get_disabled():
             self.undo_button.set_disabled(not self.board.has_move())
-            self.move_button.set_disabled(False)
+            self.move_button.set_disabled(self.board.can_move())
             self.wrong_move_button.set_disabled(False)
         else:
             self.set_disabled(True)
@@ -107,7 +108,7 @@ class ButtonHolder(SurfaceMouseObserver):
 
     def move_button_clicked(self):
         message_to_send = messages.MOVE()
-        message_to_send.body.move = copy.deepcopy(self.board.move)
+        message_to_send.body.move = copy.deepcopy(self.board.pop_moves_to_list())
         self.game_accessor.send_message = message_to_send
         self.board.clear_saved_move()
 
@@ -123,8 +124,8 @@ class ButtonHolder(SurfaceMouseObserver):
 
     def set_disabled(self, value):
         for button in self.buttons:
-                if button.get_disabled() is not value:
-                    button.set_disabled(value)
+            if button.get_disabled() is not value:
+                button.set_disabled(value)
 
 
 class Board(SurfaceMouseObserver):
@@ -138,15 +139,15 @@ class Board(SurfaceMouseObserver):
         self.moving_piece = None
         self.previous_checker = None
         self.color = color
-        self.move = []
+        self.saved_moves = []
         self.move_animations = Queue.Queue()
-        self.current_animation = MoveAnimation(None, None)
+        self.current_animation = MoveAnimation(self, None)
         self.message_to_send = None
 
     def update(self):
         if self.animating():
             self.game_accessor.animating = True
-            self.current_animation.move()
+            self.current_animation.run()
         else:
             self.game_accessor.animating = False
 
@@ -216,7 +217,6 @@ class Board(SurfaceMouseObserver):
             hit_checker.pop_piece()
 
     def mouse_up_cb(self, outside):
-        final_checker = None
         if outside:
             self.moving_piece_to_prev_checker()
             return
@@ -226,62 +226,101 @@ class Board(SurfaceMouseObserver):
             return
         if hit_checker.is_reserved:
             self.moving_piece_to_prev_checker()
+            self.moving_piece = None
             return
-        first_checker = self.checkers.get_checker((hit_checker.gammon_pos[0], 0))
 
-        if not first_checker.is_empty:
-            if first_checker.piece.color is not self.moving_piece.color:
-                if self.checkers.is_next_empty(first_checker):
-                    broken_piece = first_checker.pop_piece()
-                    final_checker = self.add_broken_piece_holder(broken_piece)
-                else:
-                    self.moving_piece_to_prev_checker()
-                    return
+        if not self.can_place_piece(hit_checker, self.moving_piece):
+            self.moving_piece_to_prev_checker()
+            self.moving_piece = None
+            return
 
-        for i in range(0, constants.max_piece_in_column):
-            candidate_checker = self.checkers.get_checker((hit_checker.gammon_pos[0], i))
+        broken_holder = self.try_break_piece(hit_checker, self.moving_piece)
+        break_move = None
+        if broken_holder:
+            break_move = Move(hit_checker, broken_holder)
+        placed_checker = self.stack_piece_to_column(hit_checker, self.moving_piece)
 
-            if i == constants.max_piece_in_column - 1 or candidate_checker.is_empty:
-                candidate_checker.piece = self.moving_piece
-                final_checker = candidate_checker
-                break
+        if placed_checker.gammon_pos != self.previous_checker.gammon_pos:
+            move = Move(self.previous_checker, placed_checker, break_move)
+            self.save_move(move)
+
         self.moving_piece = None
-        if final_checker:
-            self.save_move(final_checker)
 
-    def save_move(self, final_checker):
-        self.move.append((self.previous_checker.gammon_pos, final_checker.gammon_pos))
-        self.set_board_disable()
+    def stack_piece_to_column(self, checker, piece):
+        resulting_checker = self.checkers.find_empty_checker(checker)
+        if resulting_checker is None:
+            resulting_checker = self.checkers.get_last_in_column(checker)
+
+        resulting_checker.piece = piece
+        return resulting_checker
+
+    def can_place_piece(self, checker, piece):
+        first_checker = self.checkers.get_first_in_column(checker)
+        if first_checker.is_full:
+            if self.checkers.is_next_empty(first_checker):
+                return True
+            elif first_checker.piece.color != piece.color:
+                return False
+        return True
+
+    def try_break_piece(self, checker, piece):
+        first_checker = self.checkers.get_first_in_column(checker)
+        if first_checker.is_empty:
+            return None
+        if first_checker.piece.color == piece.color:
+            return None
+        if not self.checkers.is_next_empty(first_checker):
+            return None
+
+        holder = self.add_to_broken_piece_holder(first_checker)
+        return holder
+
+    def save_move(self, move):
+        self.saved_moves.append(move)
+        self.decide_board_disable()
+
+    def pop_moves_to_list(self):
+        move_list = []
+        while self.has_move():
+            move = self.saved_moves.pop()
+            move_list.append((move.start_checker.gammon_pos, move.finish_checker.gammon_pos))
+        move_list.reverse()
+        return move_list
 
     def clear_saved_move(self):
         if self.has_move():
-            del self.move[:]
-        self.set_board_disable()
+            del self.saved_moves[:]
+        self.decide_board_disable()
 
-    def set_board_disable(self):
-        self.set_disabled(True if len(self.move) == 2 else False)
+    def decide_board_disable(self):
+        self.set_disabled(not self.can_move())
+
+    def can_move(self):
+        return False if len(self.saved_moves) == 2 else True
 
     def has_move(self):
-        return len(self.move) > 0
+        return len(self.saved_moves) > 0
 
     def undo_move(self):
         if self.has_move():
-            gammon_pos = self.move.pop()
-            self.set_board_disable()
-            self.register_move_animation(gammon_pos[1], gammon_pos[0])
+            move = self.saved_moves.pop()
+            self.decide_board_disable()
+            self.register_move_animation(move, True)
 
     def opponent_move(self, move_message):
-        self.register_move_animation(move_message[0][0], move_message[0][1])
-        self.register_move_animation(move_message[1][0], move_message[1][1])
+        for column in move_message:
+            checker1 = self.checkers.get_checker(column[0])
+            checker2 = self.checkers.get_checker(column[1])
+            move = Move(checker1, checker2)
+            self.register_move_animation(move)
 
-    def register_move_animation(self, moved_from_pos, moved_to_pos):
-        moved_from_checker = self.checkers.get_checker(moved_from_pos)
-        moved_to_checker = self.checkers.get_checker(moved_to_pos)
-        animation = MoveAnimation(moved_from_checker, moved_to_checker)
+    def register_move_animation(self, move, reverse=False):
+        animation = MoveAnimation(self, move, reverse)
         animation.init()
         self.move_animations.put(animation)
 
-    def add_broken_piece_holder(self, piece):
+    def add_to_broken_piece_holder(self, checker):
+        piece = checker.pop_piece()
         if piece.color is constants.WHITE:
             broken_holder = self.checkers.get_checker((-25, 0))
             broken_holder.piece = piece
@@ -293,62 +332,90 @@ class Board(SurfaceMouseObserver):
 
 
 class MoveAnimation():
-    def __init__(self, moved_from=None, moved_to=None):
-        self.moved_from = moved_from
-        self.moved_to = moved_to
-        self.line = None
+    def __init__(self, board, move=None, reverse=False):
+        self.board = board
+        self.move = move
+        self.start_checker = None
+        self.finish_checker = None
+        self.vector = None
         self.piece = None
         self.finished = True
-        self.speed = 10
+        self.speed = 15
+        self.reverse = reverse
 
     def init(self):
         self.finished = False
-        self.line = Line(
-            ((self.moved_from.rect.x, self.moved_from.rect.y), (self.moved_to.rect.x, self.moved_to.rect.y)))
-
-        if self.line.slope is None:
-            if self.moved_to.rect.y - self.moved_from.rect.y > 0:
-                self.speed *= -1
-        elif self.moved_to.rect.x - self.moved_from.rect.x < 0:
-            if self.line.slope is not None:
-                self.speed *= -1
-
-    def move(self):
-        if not self.moved_from.is_empty:
-            self.piece = self.moved_from.pop_piece()
-        self.finished = self.moved_to.rect.colliderect(self.piece.rect)
-        if self.finished:
-            self.piece.rect.x = self.moved_to.rect.x
-            self.piece.rect.y = self.moved_to.rect.y
-            self.moved_to.piece = self.piece
-            return
-        if self.line.slope is None:
-            self.piece.rect.y -= self.speed
+        if self.reverse:
+            self.start_checker = self.move.finish_checker
+            self.finish_checker = self.move.start_checker
         else:
-            self.piece.rect.x += self.speed
-            self.piece.rect.y = self.line.solve_for_y(self.piece.rect.x)
+            self.start_checker = self.move.start_checker
+            self.finish_checker = self.move.finish_checker
+        self.vector = Vector((self.move.start_checker, self.move.finish_checker))
+
+    def run(self):
+        if not self.start_checker.is_empty:
+            self.piece = self.start_checker.pop_piece()
+        if not self.finished:
+            self.piece.rect.x = round(self.piece.rect.x + self.vector.direction_x * self.speed)
+            self.piece.rect.y = round(self.piece.rect.y + self.vector.direction_y * self.speed)
+            if self.vector.traveled_distance(self.piece) >= self.vector.distance:
+                self.piece.rect.x = self.finish_checker.rect.x
+                self.piece.rect.y = self.finish_checker.rect.y
+                self.board.try_break_piece(self.finish_checker, self.piece)
+                self.finish_checker.piece = self.piece
+                if self.move.linked_move:
+                    self.move = self.move.linked_move
+                    self.init()
+                else:
+                    self.finished = True
 
 
-class Line(object):
+class Vector(object):
     def __init__(self, data):
-        self.first, self.second = data
+        self.start, self.finish = data
+        (self.start_x, self.start_y), (self.finish_x, self.finish_y) = \
+            (self.start.rect.x, self.start.rect.y), (self.finish.rect.x, self.finish.rect.y)
 
     @property
     def slope(self):
-        (x1, y1), (x2, y2) = self.first, self.second
         try:
-            return (float(y2) - y1) / (float(x2) - x1)
+            return (float(self.finish_y) - self.start_y) / (float(self.finish_x) - self.start_x)
         except ZeroDivisionError:
             # line is vertical
             return None
 
     @property
+    def direction_x(self):
+        return (self.finish_x - self.start_x) / self.distance
+
+    @property
+    def direction_y(self):
+        return (self.finish_y - self.start_y) / self.distance
+
+    @property
+    def distance(self):
+        return self.traveled_distance(self.finish)
+
+    def traveled_distance(self, position):
+        return math.sqrt(math.pow(position.rect.x - self.start_x, 2) + math.pow(
+            position.rect.y - self.start_y, 2))
+
+    @property
     def y_intercept(self):
-        x, y = self.first
-        return y - self.slope * x
+        return self.start_y - self.slope * self.start_x
 
     def solve_for_y(self, x):
         return float(self.slope) * x + float(self.y_intercept)
 
     def solve_for_x(self, y):
         return float((y - float(self.y_intercept))) / float(self.slope)
+
+
+class Move():
+    def __init__(self, start, finish, linked_move=None):
+        self.start_checker = start
+        self.finish_checker = finish
+        self.start_pos = start.gammon_pos
+        self.finish_pos = finish.gammon_pos
+        self.linked_move = linked_move

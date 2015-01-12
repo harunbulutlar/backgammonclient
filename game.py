@@ -110,6 +110,8 @@ connector = client.ClientConnector(screen)
 
 
 pygame_result = True
+# first = messages.RSPFIRST()
+# result = ['harun',first]
 while pygame_result:
     result = connector.connect_and_set_user()
     timeout = connector.connection.socket.gettimeout()

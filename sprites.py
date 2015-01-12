@@ -33,6 +33,19 @@ class Checkers(pygame.sprite.Group):
         if key in self.checker_dict:
             return self.checker_dict[key]
 
+    def get_first_in_column(self,checker):
+        return self.get_checker((checker.gammon_pos[0], 0))
+
+    def find_empty_checker(self, checker):
+        for i in range(0, constants.max_piece_in_column):
+            candidate_checker = self.get_checker((checker.gammon_pos[0], i))
+            if candidate_checker.is_empty:
+                return candidate_checker
+        return None
+
+    def get_last_in_column(self,checker):
+        return self.get_checker((checker.gammon_pos[0], constants.max_piece_in_column - 1))
+
     def clear_checkers(self):
         for key, checker in self.checker_dict.iteritems():
            checker.clear_pieces()
@@ -95,7 +108,7 @@ class Piece(BaseSprite):
     def __init__(self, surface, color, position, radius):
         BaseSprite.__init__(self, surface, position, radius * 2)
         self.radius = radius
-        if isinstance(color, str) or isinstance(color, unicode) and color == 'WHITE':
+        if (isinstance(color, str) or isinstance(color, unicode)) and color == 'WHITE':
             self.color = constants.WHITE
         else:
             self.color = constants.BLACK
@@ -183,6 +196,13 @@ class Checker(BaseSprite):
             return True
         else:
             return False
+
+    @property
+    def is_full(self):
+        if not self._pieces or len(self._pieces) == 0:
+            return False
+        else:
+            return True
 
     @property
     def next_gmy_pos(self):

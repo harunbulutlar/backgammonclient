@@ -16,13 +16,13 @@ class ClientConnector():
         self.username_dialog = controls.UserNameDialog(screen)
         self.match_dialog = controls.MatchOrWatchDialog(screen)
         self.finding_dialog = controls.FindingDialog(screen, self.finding_fallback)
+        self.username = None
 
     def connect_and_set_user(self):
-        username = None
-        while not username:
+        while not self.username:
             self.connection_routine()
-            username = self.set_username_routine()
-        return username, self.find_match_routine()
+            self.username = self.set_username_routine()
+        return self.username, self.find_match_routine()
 
     def finding_fallback(self):
         timeout = self.connection.socket.gettimeout()
@@ -35,7 +35,6 @@ class ClientConnector():
 
     def find_match_routine(self):
         finished = False
-        is_white = False
         match = False
         while not finished:
             while not match:
@@ -74,7 +73,8 @@ class ClientConnector():
             if e.args[0] != errno.EWOULDBLOCK:
                 print'something\'s wrong with %s:%d. Exception type is %s' % (
                     self.connection.host, self.connection.port, repr(e))
-                return errno.EWOULDBLOCK
+                self.username = None
+
             return False
         return True
 
@@ -85,7 +85,9 @@ class ClientConnector():
             if e.args[0] != errno.EWOULDBLOCK:
                 print'something\'s wrong with %s:%d. Exception type is %s' % (
                     self.connection.host, self.connection.port, repr(e))
+                self.username = None
                 return False,None
+
             return True, None
 
         return True,message

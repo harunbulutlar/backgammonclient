@@ -236,9 +236,10 @@ class Board(SurfaceMouseObserver):
 
         broken_holder = self.try_break_piece(hit_checker, self.moving_piece)
         break_move = None
-        if broken_holder:
-            break_move = Move(hit_checker, broken_holder)
         placed_checker = self.stack_piece_to_column(hit_checker, self.moving_piece)
+        if broken_holder:
+            break_move = Move(placed_checker, broken_holder)
+
 
         if placed_checker.gammon_pos != self.previous_checker.gammon_pos:
             move = Move(self.previous_checker, placed_checker, break_move)
@@ -283,6 +284,10 @@ class Board(SurfaceMouseObserver):
         move_list = []
         while self.has_move():
             move = self.saved_moves.pop()
+            linked_move = move.linked_move
+            while linked_move:
+                move_list.append((linked_move.start_checker.gammon_pos, linked_move.finish_checker.gammon_pos))
+                linked_move = linked_move.linked_move
             move_list.append((move.start_checker.gammon_pos, move.finish_checker.gammon_pos))
         move_list.reverse()
         return move_list
@@ -308,11 +313,23 @@ class Board(SurfaceMouseObserver):
             self.register_move_animation(move, True)
 
     def opponent_move(self, move_message):
-        for column in move_message:
-            checker1 = self.checkers.get_checker(column[0])
-            checker2 = self.checkers.get_checker(column[1])
-            move = Move(checker1, checker2)
+        i = 0
+        while i < len(move_message):
+            column1 = move_message[i]
+            column2 = None
+            if i + 1 < len(move_message):
+                column2 = move_message[i + 1]
+                if column2[1][0] < 0:
+                    checker20 = self.checkers.get_checker(column2[0])
+                    checker21 = self.checkers.get_checker(column2[1])
+                    move = Move(checker20, checker21)
+                    self.register_move_animation(move)
+                    i += 1
+            checker10 = self.checkers.get_checker(column1[0])
+            checker11 = self.checkers.get_checker(column1[1])
+            move = Move(checker10, checker11)
             self.register_move_animation(move)
+            i += 1
 
     def register_move_animation(self, move, reverse=False):
         animation = MoveAnimation(self, move, reverse)
@@ -323,7 +340,6 @@ class Board(SurfaceMouseObserver):
         piece = checker.pop_piece()
         if piece.color is constants.WHITE:
             broken_holder = self.checkers.get_checker((-25, 0))
-            broken_holder.piece = piece
         else:
             broken_holder = self.checkers.get_checker((-1, 0))
 
@@ -362,7 +378,8 @@ class MoveAnimation():
             if self.vector.traveled_distance(self.piece) >= self.vector.distance:
                 self.piece.rect.x = self.finish_checker.rect.x
                 self.piece.rect.y = self.finish_checker.rect.y
-                self.board.try_break_piece(self.finish_checker, self.piece)
+                if self.reverse:
+                    self.board.try_break_piece(self.finish_checker, self.piece)
                 self.finish_checker.piece = self.piece
                 if self.move.linked_move:
                     self.move = self.move.linked_move

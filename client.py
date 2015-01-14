@@ -86,9 +86,8 @@ class ClientConnector():
                 print'something\'s wrong with %s:%d. Exception type is %s' % (
                     self.connection.host, self.connection.port, repr(e))
                 self.username = None
-                return False,None
+                return False, None
 
             return True, None
 
-        return True,message
-
+        return True, message

@@ -53,6 +53,12 @@ class SurfaceMouseObserver(MouseObserver):
         copy_rect.y = abs_pos[1] + copy_rect.y
         return copy_rect
 
+    def mouse_pos_diff(self):
+        self.current_pos = pygame.mouse.get_pos()
+        diff_x = self.pos[0] - self.current_pos[0]
+        diff_y = self.pos[1] - self.current_pos[1]
+        self.pos = self.current_pos
+        return diff_x, diff_y
     def animating(self):
         return False
 

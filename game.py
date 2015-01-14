@@ -88,6 +88,9 @@ class PyGameMain():
                 elif isinstance(received_message[1], messages.RSPOPDISCON):
                     self.error = self.done = True
                     break
+                elif isinstance(received_message[1], messages.RSPERROR):
+                    self.game_accessor.playing = True
+                    pass
 
             pygame.display.flip()
             self.clock.tick(60)
@@ -104,14 +107,15 @@ class GameAccessor():
         self.wrong_move_pushed=False
 
 pygame.init()
+constants.text_font = pygame.font.SysFont("tahoma", 25)
 screen = pygame.display.set_mode([constants.screen_width, constants.screen_height], SWSURFACE)
 screen.fill(constants.SCREEN_COLOR)
 connector = client.ClientConnector(screen)
 
 
 pygame_result = True
-# first = messages.RSPFIRST()
-# result = ['harun',first]
+first = messages.RSPFIRST()
+result = ['harun',first]
 while pygame_result:
     result = connector.connect_and_set_user()
     timeout = connector.connection.socket.gettimeout()

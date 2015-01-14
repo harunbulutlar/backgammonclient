@@ -13,7 +13,7 @@ class Button:
     def __init__(self, surface, color, x, y, length, height, width, text, text_color, font_size):
         self.surface = surface
         self.rect = pygame.Rect(x, y, length, height)
-        self.color = color
+        self.main_color = color
         self.current_color = color
         self.clicked_color = (255 - color[0], 255 - color[1], 255 - color[2])
         self.hovered_color = self.color_variant(color, 15)
@@ -27,33 +27,25 @@ class Button:
         self.text_color = text_color
         self.font_size = font_size
         self.__disabled = False
+        self.font = pygame.font.SysFont("Calibri", self.font_size)
+        self.text = self.font.render(self.text, 1, self.text_color)
+        self.dirty = True
 
     def get_disabled(self):
         return self.__disabled
 
     def set_disabled(self, value):
-        if value:
-            self.current_color = DISABLED_COLOR
-        else:
-            self.current_color = self.color
-        self.__disabled = value
+        if self.__disabled != value:
+            self.current_color = DISABLED_COLOR if value else self.main_color
+            self.__disabled = value
+            self.dirty = True
 
     def draw_button(self):
-        for i in range(1, 10):
-            s = pygame.Surface((self.length + (i * 2), self.height + (i * 2)))
-            s.fill(self.current_color)
-            alpha = (255 / (i + 2))
-            if alpha <= 0:
-                alpha = 1
-            s.set_alpha(alpha)
-            pygame.draw.rect(s, self.current_color, (self.x - i, self.y - i, self.length + i, self.height + i), self.width)
-            self.surface.blit(s, (self.x - i, self.y - i))
         pygame.draw.rect(self.surface, self.current_color, (self.x, self.y, self.length, self.height), 0)
-        pygame.draw.rect(self.surface, (190, 190, 190), (self.x, self.y, self.length, self.height), 1)
-        font = pygame.font.SysFont("Calibri", self.font_size)
-        text = font.render(self.text, 1, self.text_color)
-        self.surface.blit(text,
-                          ((self.x + self.length / 2) - text.get_width() / 2, (self.y + self.height / 2) - text.get_height() / 2))
+        pygame.draw.rect(self.surface, self.current_color, (self.x, self.y, self.length, self.height), 1)
+        self.surface.blit(self.text,
+                          ((self.x + self.length / 2) - self.text.get_width() / 2, (self.y + self.height / 2) - self.text.get_height() / 2))
+        self.dirty = False
 
     @property
     def abs_rect(self):
@@ -64,16 +56,21 @@ class Button:
         return copy_rect
 
     def mouse_in(self):
-        self.current_color = self.hovered_color
+        self.change_color(self.hovered_color)
 
     def mouse_out(self):
-        self.current_color = self.color
+        self.change_color(self.main_color)
 
     def mouse_down(self):
-        self.current_color = self.clicked_color
+        self.change_color(self.clicked_color)
 
     def mouse_up(self):
-        self.current_color = self.color
+        self.change_color(self.main_color)
+
+    def change_color(self, color):
+        if not self.get_disabled() and self.current_color != color:
+            self.current_color = color
+            self.dirty = True
 
     def color_variant(self, in_color, brightness_offset=1):
         hex_color = '#%02x%02x%02x' % (in_color[0], in_color[1], in_color[2])
